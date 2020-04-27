@@ -11,33 +11,44 @@ from sklearn.linear_model import ElasticNet
 from sklearn.linear_model import Ridge
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import r2_score, mean_squared_error
+import statsmodels.api as sm
+from scipy import stats
 import os
 
 floatDataPoints = ['age', 'bmi', 'children', 'charges']
 stringDataPoints = ['sex', 'smoker', 'region']
 
+# Estimators that will be used
 estimators = [LinearRegression(), Lasso(), ElasticNet(alpha = 0.01, l1_ratio = 0.9, max_iter = 20), Ridge(), RandomForestRegressor(n_estimators = 100, criterion = 'mse', random_state = 1, n_jobs = -1)]
 
+# Open pdf to be generated
 pdf = PdfPages('medical_costs.pdf')
 
+# A counter for plot figures
 COUNTER = 0
 
 def get_distribution_plot(data, x):
 	'''
-	Generate distrbution of each data point
+	Generate distrbution of a data point
+	Input:
+		data: Pandas DataFrame of medical_costs
+		x: data point
 	'''
 	fig = plt.figure(COUNTER)
 	increment_counter()
 	distPlot = sns.distplot(data[x])
 	title_x = get_title(x)
-	plt.title('Distirbution of ' + title_x)
+	plt.title('Distribution of ' + title_x)
 	pdf.savefig(fig)
 	plt.close()
 
 
 def get_bar_chart(data, x):
 	'''
-	Generate count of each data point
+	Generate count of a data point
+	Input:
+		data: Pandas DataFrame of medical_costs
+		x: data point
 	'''
 	fig = plt.figure(COUNTER)
 	increment_counter()
@@ -69,7 +80,9 @@ def make_plots(data, z = None):
 
 def three_axis_plot(data):
 	'''
-	Generate all individual plots with a colored z-axis for smokers, bmi and age
+	Generate plots with a colored z-axis for smokers, bmi and age
+	Input:
+		data: Pandas DataFrame of medical_costs
 	'''
 	make_plots(data, z = 'smoker')
 	make_plots(data, z = 'bmi')
@@ -77,6 +90,14 @@ def three_axis_plot(data):
 
 
 def make_scatter_plot(data, x, y = 'charges', z = None):
+	'''
+	Create scatter plot, default is charges vs. x
+	Inputs:
+		data: Pandas Dataframe of medical cost data
+		x: String, x on plot
+		y: String, y on plot, default charges
+		z: color scale of plot
+	'''
 	# Create plot, add labels and title
 	fig = plt.figure(COUNTER)
 	increment_counter()
@@ -106,6 +127,14 @@ def make_scatter_plot(data, x, y = 'charges', z = None):
 
 
 def make_violin_plot(data, x, y = 'charges', z = None):
+	'''
+	Create violin plot, default is charges vs. x
+	Inputs:
+		data: Pandas Dataframe of medical cost data
+		x: String, x on plot
+		y: String, y on plot, default charges
+		z: color scale of plot
+	'''
 	fig = plt.figure(COUNTER)
 	increment_counter()
 	hue = 'smoker' if z else None # add hue if desired
@@ -135,21 +164,23 @@ def make_ml_test_comparison_plot(target_train, target_test, train_pred, test_pre
 def preprocess(data):
 	'''
 	Prepare data to be inputted into machine learning algorithms
+	Input:
+		data: Pandas DataFrame of medical_costs
 	'''
 	scaleMinMax = preprocessing.MinMaxScaler()
 	data[["age", "bmi", "children"]] = scaleMinMax.fit_transform(data[["age", "bmi", "children"]])
 	data = pd.get_dummies(data, prefix = ["sex", "smoker", "region"])
+	## retain sex = male, smoker = yes, and remove 1 region = northeast to avoid dummytrap
+	data = data.drop(data.columns[[4,6,11]], axis = 1)
 
 	target = data['charges']
-	cols = [col for col in data.columns if col != 'charges']
-	data = data[cols]
+	data = data.drop(data.columns[[3]], axis = 1)
+
 	return data, target
 
 
 def linear_models(model, data_train, data_test, target_train, target_test):
 	lm = model.fit(data_train, target_train)
-	# print(lm.summary())
-	# print('\n')
 	train_pred = lm.predict(data_train)
 	test_pred = lm.predict(data_test)
 	print(lm.score(data_test, target_test))
@@ -161,10 +192,17 @@ def linear_models(model, data_train, data_test, target_train, target_test):
 	return train_pred, test_pred, rmse, r2_scores
 
 
-def generate_text_page_pdf(txt):
-	fig = plt.figure(figsize=(11.69,8.27))
+def get_linear_summary(data_train, target_train):
+	X_train = sm.add_constant(data_train)
+	linearModel = sm.OLS(target_train, X_train)
+	linear = linearModel.fit()
+	generate_text_page_pdf(linear.summary(), 8)
+
+
+def generate_text_page_pdf(txt, size):
+    fig = plt.figure()
     fig.clf()
-    fig.text(0.5,0.5,txt, transform=fig.transFigure, size=24, ha="left")
+    fig.text(0.0625, 0.0625,txt, transform=fig.transFigure, size=size, ha="left")
     pdf.savefig()
     plt.close()
 
@@ -201,18 +239,31 @@ def main():
 	for point in stringDataPoints:
 		get_bar_chart(data, point)
 
+	txt_1 = 'Now that we understand the\ndata in the dataset, lets look at\ncharges vs. each data point to see\nwhich have an effect'
+	generate_text_page_pdf(txt_1, 24)
+
 	make_plots(data)
+
+	txt_2 = 'It is clear from these plots\nthat smokers, people with BMI\nover 30, and old people have\nhigher individual medical costs.\n'
+	txt_3 = 'Let us now look at the other\nplots with these data points\nhighlighted to see what their\neffect is on charges'
+	generate_text_page_pdf(txt_2 + txt_3, 24)
 	three_axis_plot(data)
+
 	# Machine Learning
 	ml_data, target = preprocess(data)
 	data_train, data_test, target_train, target_test = train_test_split(ml_data, target, test_size = 0.20, random_state = 0)
+
+	get_linear_summary(data_train, target_train)
+
 	for estimator in estimators:
 		train_pred, test_pred, rmse, r2_scores = linear_models(estimator, data_train, data_test, target_train, target_test)
 		modelDataTest = pd.DataFrame({'Tailings': test_pred, 'Predicted Charges': test_pred - target_test})
 		modelDataTrain = pd.DataFrame({'Tailings': train_pred, 'Predicted Charges': train_pred - target_train})
 		make_ml_test_comparison_plot(target_train, target_test, train_pred, test_pred, estimator)
+
 		print(r2_scores)
 		print(rmse)
+
 
 	# Close pdf
 	pdf.close()

@@ -19,3 +19,4 @@ To pick which models we wanted to use to predict charges, we found a chart by Sc
 - Lasso
 - ElasticNet
 - RidgeRegression
+- RandomForestRegressor
