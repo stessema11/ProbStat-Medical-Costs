@@ -8,13 +8,14 @@ from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LinearRegression
 from sklearn.linear_model import Lasso
 from sklearn.linear_model import ElasticNet
+from sklearn.linear_model import Ridge
 from sklearn.metrics import r2_score, mean_squared_error
 import os
 
 floatDataPoints = ['age', 'bmi', 'children', 'charges']
 stringDataPoints = ['sex', 'smoker', 'region']
 
-mlModels = [LinearRegression(), Lasso(), ElasticNet()]
+mlModels = [LinearRegression(), Lasso(), ElasticNet(), Ridge()]
 
 pdf = PdfPages('medical_costs.pdf')
 
@@ -134,26 +135,30 @@ def preprocess(data):
 	'''
 	Prepare data to be inputted into machine learning algorithms
 	'''
-	label_encoder = preprocessing.LabelEncoder()
-	data['sex'] = label_encoder.fit_transform(data['sex'])
-	data['smoker'] = label_encoder.fit_transform(data['smoker'])
-	data['region'] = label_encoder.fit_transform(data['region'])
+	scaleMinMax = preprocessing.MinMaxScaler()
+	data[["age", "bmi", "children"]] = scaleMinMax.fit_transform(data[["age", "bmi", "children"]])
+	data = pd.get_dummies(data, prefix = ["sex", "smoker", "region"])
 
-	cols = [col for col in data.columns if col is not 'charges']
-	data = data[cols]
+	print(data.head())
+
 	target = data['charges']
+	cols = [col for col in data.columns if col != 'charges']
+	data = data[cols]
+	print(data.head())
+	print(data.tail())
 	return data, target
 
 
-def linear_models(model, data_train, target_train, data_test, target_test):
+def linear_models(model, data_train, data_test, target_train, target_test):
 	lm = model.fit(data_train, target_train)
 
 	train_pred = lm.predict(data_train)
 	test_pred = lm.predict(data_test)
+	print(lm.score(data_test, target_test))
 
-	rmse = {'train': mean_squared_error(target_train, train_pred)**(1/2), 'test': mean_squared_error(target_test, test_pred)**(1/2)} 
+	rmse = {'model': str(model)[:str(model).index('(')], 'train': mean_squared_error(target_train, train_pred)**(1/2), 'test': mean_squared_error(target_test, test_pred)**(1/2)} 
 
-	r2_scores = {'train': r2_score(target_train, train_pred), 'test': r2_score(target_test, test_pred)}
+	r2_scores = {'model': str(model)[:str(model).index('(')], 'train': r2_score(target_train, train_pred), 'test': r2_score(target_test, test_pred)}
 
 	return train_pred, test_pred, rmse, r2_scores
 
@@ -196,7 +201,7 @@ def main():
 	ml_data, target = preprocess(data)
 	data_train, data_test, target_train, target_test = train_test_split(ml_data, target, test_size = 0.20, random_state = 0)
 	for model in mlModels:
-		train_pred, test_pred, rmse, r2_scores = linear_models(model, data_train, target_train, data_test, target_test)
+		train_pred, test_pred, rmse, r2_scores = linear_models(model, data_train, data_test, target_train, target_test)
 		modelDataTest = pd.DataFrame({'Tailings': test_pred, 'Predicted Charges': test_pred - target_test})
 		modelDataTrain = pd.DataFrame({'Tailings': train_pred, 'Predicted Charges': train_pred - target_train})
 		make_ml_test_comparison_plot(target_train, target_test, train_pred, test_pred, model)
