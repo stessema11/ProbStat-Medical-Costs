@@ -9,13 +9,14 @@ from sklearn.linear_model import LinearRegression
 from sklearn.linear_model import Lasso
 from sklearn.linear_model import ElasticNet
 from sklearn.linear_model import Ridge
+from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import r2_score, mean_squared_error
 import os
 
 floatDataPoints = ['age', 'bmi', 'children', 'charges']
 stringDataPoints = ['sex', 'smoker', 'region']
 
-mlModels = [LinearRegression(), Lasso(), ElasticNet(), Ridge()]
+estimators = [LinearRegression(), Lasso(), ElasticNet(alpha = 0.01, l1_ratio = 0.9, max_iter = 20), Ridge(), RandomForestRegressor(n_estimators = 100, criterion = 'mse', random_state = 1, n_jobs = -1)]
 
 pdf = PdfPages('medical_costs.pdf')
 
@@ -139,19 +140,16 @@ def preprocess(data):
 	data[["age", "bmi", "children"]] = scaleMinMax.fit_transform(data[["age", "bmi", "children"]])
 	data = pd.get_dummies(data, prefix = ["sex", "smoker", "region"])
 
-	print(data.head())
-
 	target = data['charges']
 	cols = [col for col in data.columns if col != 'charges']
 	data = data[cols]
-	print(data.head())
-	print(data.tail())
 	return data, target
 
 
 def linear_models(model, data_train, data_test, target_train, target_test):
 	lm = model.fit(data_train, target_train)
-
+	# print(lm.summary())
+	# print('\n')
 	train_pred = lm.predict(data_train)
 	test_pred = lm.predict(data_test)
 	print(lm.score(data_test, target_test))
@@ -161,6 +159,14 @@ def linear_models(model, data_train, data_test, target_train, target_test):
 	r2_scores = {'model': str(model)[:str(model).index('(')], 'train': r2_score(target_train, train_pred), 'test': r2_score(target_test, test_pred)}
 
 	return train_pred, test_pred, rmse, r2_scores
+
+
+def generate_text_page_pdf(txt):
+	fig = plt.figure(figsize=(11.69,8.27))
+    fig.clf()
+    fig.text(0.5,0.5,txt, transform=fig.transFigure, size=24, ha="left")
+    pdf.savefig()
+    plt.close()
 
 
 def get_title(x):
@@ -200,11 +206,11 @@ def main():
 	# Machine Learning
 	ml_data, target = preprocess(data)
 	data_train, data_test, target_train, target_test = train_test_split(ml_data, target, test_size = 0.20, random_state = 0)
-	for model in mlModels:
-		train_pred, test_pred, rmse, r2_scores = linear_models(model, data_train, data_test, target_train, target_test)
+	for estimator in estimators:
+		train_pred, test_pred, rmse, r2_scores = linear_models(estimator, data_train, data_test, target_train, target_test)
 		modelDataTest = pd.DataFrame({'Tailings': test_pred, 'Predicted Charges': test_pred - target_test})
 		modelDataTrain = pd.DataFrame({'Tailings': train_pred, 'Predicted Charges': train_pred - target_train})
-		make_ml_test_comparison_plot(target_train, target_test, train_pred, test_pred, model)
+		make_ml_test_comparison_plot(target_train, target_test, train_pred, test_pred, estimator)
 		print(r2_scores)
 		print(rmse)
 
